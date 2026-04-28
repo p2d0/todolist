@@ -125,8 +125,9 @@ pub fn update_display(
         btn.set_css_classes(&["timer-banner-button", "active"]);
         clock.set_progress(pomos);
     } else {
-        let pomos = elapsed as f64 / 1500.0;
-        label.set_label(&format!("{:.1} pomodoros", pomos));
-        clock.set_progress(pomos);
+        // Stopwatch mode: show elapsed time
+        clock.set_stopwatch_elapsed(elapsed);
+        label.set_css_classes(&["timer-banner-label", "active"]);
+        btn.set_css_classes(&["timer-banner-button", "active"]);
     }
 }
