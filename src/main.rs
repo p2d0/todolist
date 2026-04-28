@@ -7,6 +7,7 @@ use crate::ui::AppView;
 
 pub mod db;
 mod settings;
+pub mod service;
 mod ui;
 
 fn main() {
@@ -19,11 +20,17 @@ fn main() {
         settings.set_gtk_application_prefer_dark_theme(true);
     }
 
-    app.connect_activate(move |app| {
-        // Database
-        let db = Database::new("pomotasker.db").expect("Failed to initialize database");
+    // Resolve absolute paths so clone() works regardless of CWD
+    let db_path = std::env::current_dir()
+        .expect("No cwd")
+        .join("pomotasker.db");
 
-        // Settings
+    app.connect_activate(move |app| {
+        // Database (absolute path)
+        let db = Database::new(db_path.to_str().expect("db path"))
+            .expect("Failed to initialize database");
+
+        // Settings (will use absolute path internally)
         let settings = Settings::load();
 
         // Window

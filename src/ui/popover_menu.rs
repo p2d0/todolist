@@ -149,7 +149,7 @@ pub fn attach_popover(
                     .borrow()
                     .insert_session(habit_id, date, habit_duration, &now_str);
             }
-            super::refresh_from_closures(
+            super::refresh_from_closures_compat(
                 &db,
                 &habits,
                 &habit_list,

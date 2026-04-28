@@ -124,16 +124,11 @@ window {
 
 .day-circle {
 	border-radius: 50%;
-	width: 30px;
-	height: 30px;
 	min-width: 30px;
 	min-height: 30px;
-	max-width: 30px;
-	max-height: 30px;
 	padding: 0;
 	margin: 0;
 	line-height: 1;
-	text-align: center;
 	background: #2a2e3f;
 	background-color: #2a2e3f;
 	background-image: none;

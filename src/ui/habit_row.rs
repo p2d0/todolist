@@ -32,18 +32,18 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
         // Compute state
         let (circle_label, is_completed, is_partial, has_data) = match habit.habit_type {
             HabitType::Timer => {
-                let has = ctx.db.borrow().has_session_for_date(habit.id, date).unwrap_or(false);
-                let mins = ctx.db.borrow().get_total_minutes_for_habit_date(habit.id, date).unwrap_or(0);
+                let has = ctx.db().borrow().has_session_for_date(habit.id, date).unwrap_or(false);
+                let mins = ctx.db().borrow().get_total_minutes_for_habit_date(habit.id, date).unwrap_or(0);
                 let label = if has { format!("{}m", mins) } else { day_letter(date.weekday().number_from_monday() as i64) };
                 (label, has, false, has)
             }
             HabitType::Boolean => {
-                let val = ctx.db.borrow().get_value_for_habit_date(habit.id, date).unwrap_or(None);
+                let val = ctx.db().borrow().get_value_for_habit_date(habit.id, date).unwrap_or(None);
                 let yes = val.is_some();
                 ("✓".into(), yes, false, true)
             }
             HabitType::Number => {
-                let val = ctx.db.borrow().get_value_for_habit_date(habit.id, date).unwrap_or(None);
+                let val = ctx.db().borrow().get_value_for_habit_date(habit.id, date).unwrap_or(None);
                 match (val, habit.min_value) {
                     (Some(v), Some(min)) => {
                         if (v as u32) >= min {
@@ -61,6 +61,9 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
         let circle = gtk4::Button::with_label(&circle_label);
         circle.add_css_class("flat");
         circle.add_css_class("day-circle");
+        circle.set_size_request(30, 30);
+        circle.set_halign(gtk4::Align::Center);
+        circle.set_valign(gtk4::Align::Center);
 
         if is_completed {
             circle.add_css_class("day-completed");
@@ -87,8 +90,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
 
         // === Left-click handler ===
         {
-            let db = ctx.db.clone();
-            let habits = ctx.habits.clone();
+            let db = ctx.db().clone();
+            let habits = ctx.habits().clone();
             let habit_list = ctx.habit_list.clone();
             let wsl = ctx.wsl.clone();
             let timer_label = ctx.timer_label.clone();
@@ -118,9 +121,20 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                     if aid_val == Some(habit.id) {
                         timer_banner::stop(&timer_label, &timer_btn, timer_shared.clone(), &db, &settings);
                         circle_c.remove_css_class("day-completed");
+                        circle_c.remove_css_class("day-active");
                         row_c.remove_css_class("active");
                         let ts = timer_shared.borrow();
                         ts.active_row.set(None);
+                        ts.active_circle.set(None);
+                        ts.active_habit_for_circle.replace(None);
+                        // Update circle label to show saved minutes
+                        let mins = db.borrow().get_total_minutes_for_habit_date(habit.id, date).unwrap_or(0);
+                        if mins > 0 {
+                            circle_c.set_label(&format!("{}m", mins));
+                            circle_c.add_css_class("day-completed");
+                        } else {
+                            circle_c.set_label(&day_letter(date.weekday().number_from_monday() as i64));
+                        }
                     } else {
                         if aid_val.is_some() {
                             timer_banner::stop(&timer_label, &timer_btn, timer_shared.clone(), &db, &settings);
@@ -129,8 +143,30 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                             let ts = timer_shared.borrow();
                             ts.active_row.replace(None)
                         };
+                        let old_circle = {
+                            let ts = timer_shared.borrow();
+                            ts.active_circle.replace(None)
+                        };
+                        let old_habit_id = {
+                            let ts = timer_shared.borrow();
+                            ts.active_habit_for_circle.replace(None)
+                        };
                         if let Some(or) = old_row {
                             or.remove_css_class("active");
+                        }
+                        // Update old circle label to show saved minutes
+                        if let Some(oc) = old_circle {
+                            oc.remove_css_class("day-active");
+                            if let Some(old_id) = old_habit_id {
+                                let today = Local::now().date_naive();
+                                let mins = db.borrow().get_total_minutes_for_habit_date(old_id, today).unwrap_or(0);
+                                if mins > 0 {
+                                    oc.set_label(&format!("{}m", mins));
+                                    oc.add_css_class("day-completed");
+                                } else {
+                                    oc.set_label(&day_letter(today.weekday().number_from_monday() as i64));
+                                }
+                            }
                         }
                         let mode = timer_shared.borrow().clock.get_mode();
                         timer_banner::start(&timer_label, &timer_btn, &habit, mode, timer_shared.clone(), &settings);
@@ -139,6 +175,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                         row_c.add_css_class("active");
                         let ts = timer_shared.borrow();
                         ts.active_row.replace(Some(row_c.clone()));
+                        ts.active_circle.replace(Some(circle_c.clone()));
+                        ts.active_habit_for_circle.replace(Some(habit.id));
                     }
                 } else {
                     let has_session = db.borrow().has_session_for_date(habit.id, date).unwrap_or(false);
@@ -148,6 +186,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                     } else {
                         let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
                         let _ = db.borrow().insert_session(habit.id, date, habit.timer_duration_seconds, &now_str);
+                        let mins = db.borrow().get_total_minutes_for_habit_date(habit.id, date).unwrap_or(0);
+                        circle_c.set_label(&format!("{}m", mins));
                         circle_c.add_css_class("day-completed");
                     }
                 }
@@ -180,8 +220,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                     let habit_id = habit.id;
                     let date_c = date;
                     {
-                        let db = ctx.db.clone();
-                        let habits = ctx.habits.clone();
+                        let db = ctx.db().clone();
+                        let habits = ctx.habits().clone();
                         let habit_list = ctx.habit_list.clone();
                         let wsl = ctx.wsl.clone();
                         let timer_shared = ctx.timer_shared.clone();
@@ -197,8 +237,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                         });
                     }
                     {
-                        let db = ctx.db.clone();
-                        let habits = ctx.habits.clone();
+                        let db = ctx.db().clone();
+                        let habits = ctx.habits().clone();
                         let habit_list = ctx.habit_list.clone();
                         let wsl = ctx.wsl.clone();
                         let timer_shared = ctx.timer_shared.clone();
@@ -214,8 +254,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                         });
                     }
                     {
-                        let db = ctx.db.clone();
-                        let habits = ctx.habits.clone();
+                        let db = ctx.db().clone();
+                        let habits = ctx.habits().clone();
                         let habit_list = ctx.habit_list.clone();
                         let wsl = ctx.wsl.clone();
                         let timer_shared = ctx.timer_shared.clone();
@@ -229,8 +269,7 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                             popover_c.popdown();
                             let _ = db.borrow().delete_sessions_for_habit_date(habit_id, date_c);
                             circle_c.remove_css_class("day-completed");
-                            super::refresh_from_closures(&db, &habits, &habit_list, &wsl,
-                                timer_shared.clone(), &timer_label, &timer_btn, &settings, &window);
+                            super::refresh_from_closures_compat(&db, &habits, &habit_list, &wsl, timer_shared.clone(), &timer_label, &timer_btn, &settings, &window);
                         });
                     }
                 }
@@ -242,7 +281,7 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                     let habit_id = habit.id;
                     let date_c = date;
                     {
-                        let db = ctx.db.clone();
+                        let db = ctx.db().clone();
                         let circle_c = circle.clone();
                         let popover_c = popover.clone();
                         btn_set_yes.connect_clicked(move |_| {
@@ -252,7 +291,7 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                         });
                     }
                     {
-                        let db = ctx.db.clone();
+                        let db = ctx.db().clone();
                         let circle_c = circle.clone();
                         let popover_c = popover.clone();
                         btn_set_no.connect_clicked(move |_| {
@@ -270,8 +309,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                     let habit_id = habit.id;
                     let date_c = date;
                     {
-                        let db = ctx.db.clone();
-                        let habits = ctx.habits.clone();
+                        let db = ctx.db().clone();
+                        let habits = ctx.habits().clone();
                         let habit_list = ctx.habit_list.clone();
                         let wsl = ctx.wsl.clone();
                         let timer_shared = ctx.timer_shared.clone();
@@ -288,8 +327,8 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                         });
                     }
                     {
-                        let db = ctx.db.clone();
-                        let habits = ctx.habits.clone();
+                        let db = ctx.db().clone();
+                        let habits = ctx.habits().clone();
                         let habit_list = ctx.habit_list.clone();
                         let wsl = ctx.wsl.clone();
                         let timer_shared = ctx.timer_shared.clone();
@@ -304,8 +343,7 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
                             let _ = db.borrow().clear_value_for_habit_date(habit_id, date_c);
                             circle_c.remove_css_class("day-completed");
                             circle_c.remove_css_class("day-partial");
-                            super::refresh_from_closures(&db, &habits, &habit_list, &wsl,
-                                timer_shared.clone(), &timer_label, &timer_btn, &settings, &window);
+                            super::refresh_from_closures_compat(&db, &habits, &habit_list, &wsl, timer_shared.clone(), &timer_label, &timer_btn, &settings, &window);
                         });
                     }
                 }
@@ -390,7 +428,7 @@ fn build_context_menu(ctx: &RowContext, row: &gtk4::Box, habit: &Habit) {
             let timer_shared = ctx.timer_shared.clone();
             let timer_label = ctx.timer_label.clone();
             let timer_btn = ctx.timer_btn.clone();
-            let db = ctx.db.clone();
+            let db = ctx.db().clone();
             let settings = ctx.settings.clone();
             let habit = habit.clone();
             menu_start.connect_clicked(move |_| {
@@ -407,8 +445,8 @@ fn build_context_menu(ctx: &RowContext, row: &gtk4::Box, habit: &Habit) {
     popover.set_child(Some(&popover_content));
 
     {
-        let window = ctx.window.clone(); let db = ctx.db.clone(); let settings = ctx.settings.clone();
-        let habits = ctx.habits.clone(); let habit_list = ctx.habit_list.clone(); let wsl = ctx.wsl.clone();
+        let window = ctx.window.clone(); let db = ctx.db().clone(); let settings = ctx.settings.clone();
+        let habits = ctx.habits().clone(); let habit_list = ctx.habit_list.clone(); let wsl = ctx.wsl.clone();
         let timer_shared = ctx.timer_shared.clone(); let timer_label = ctx.timer_label.clone();
         let timer_btn = ctx.timer_btn.clone(); let habit = habit.clone();
         menu_edit.connect_clicked(move |_| {
@@ -418,8 +456,8 @@ fn build_context_menu(ctx: &RowContext, row: &gtk4::Box, habit: &Habit) {
     }
 
     {
-        let window = ctx.window.clone(); let db = ctx.db.clone(); let settings = ctx.settings.clone();
-        let habits = ctx.habits.clone(); let habit_list = ctx.habit_list.clone(); let wsl = ctx.wsl.clone();
+        let window = ctx.window.clone(); let db = ctx.db().clone(); let settings = ctx.settings.clone();
+        let habits = ctx.habits().clone(); let habit_list = ctx.habit_list.clone(); let wsl = ctx.wsl.clone();
         let timer_shared = ctx.timer_shared.clone(); let timer_label = ctx.timer_label.clone();
         let timer_btn = ctx.timer_btn.clone(); let habit = habit.clone();
         menu_delete.connect_clicked(move |_| {

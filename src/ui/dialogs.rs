@@ -118,7 +118,7 @@ pub fn show_add_dialog(
 
             let _ = db.borrow_mut().add_habit(&desc, 1500, HabitMode::Stopwatch, habit_type, min_value);
             dialog.close();
-            super::refresh_from_closures(
+            super::refresh_from_closures_compat(
                 &db,
                 &habits,
                 &habit_list,
@@ -251,7 +251,7 @@ pub fn show_edit_dialog(
                 .borrow_mut()
                 .update_habit(habit_id, &desc, 1500, HabitMode::Stopwatch, habit_type, min_value);
             dialog.close();
-            super::refresh_from_closures(
+            super::refresh_from_closures_compat(
                 &db,
                 &habits,
                 &habit_list,
@@ -331,7 +331,7 @@ pub fn delete_habit(
                 borrowed.active_habit_id.replace(None);
             }
             confirm_yes.close();
-            super::refresh_from_closures(
+            super::refresh_from_closures_compat(
                 &db,
                 &habits,
                 &habit_list,
@@ -424,7 +424,7 @@ pub fn show_edit_session_time(
                 let _ = db.borrow_mut().insert_session(habit_id, date, seconds, &now_str);
             }
             dialog.close();
-            super::refresh_from_closures(
+            super::refresh_from_closures_compat(
                 &db,
                 &habits,
                 &habit_list,
@@ -519,7 +519,7 @@ pub fn show_edit_number_value(
             let _ = db.borrow_mut().delete_sessions_for_habit_date(habit_id, date);
             let _ = db.borrow_mut().set_value_for_habit_date(habit_id, date, val);
             dialog.close();
-            super::refresh_from_closures(
+            super::refresh_from_closures_compat(
                 &db,
                 &habits,
                 &habit_list,

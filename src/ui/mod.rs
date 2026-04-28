@@ -5,6 +5,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 
 use crate::db::{Database, Habit, HabitMode};
+use crate::service::AppState;
 use crate::settings::Settings;
 
 mod clock;
@@ -21,15 +22,16 @@ pub struct TimerShared {
     pub timer_elapsed_before: RefCell<u32>,
     pub clock: Rc<clock::CircularClock>,
     pub active_row: Rc<Cell<Option<gtk4::Box>>>,
+    pub active_circle: Rc<Cell<Option<gtk4::Button>>>,
+    pub active_habit_for_circle: RefCell<Option<i64>>,
 }
 
 pub type TimerSharedRef = Rc<RefCell<TimerShared>>;
 
 /// Bundles all shared state needed to create a habit row or interact with the timer.
 pub struct RowContext<'a> {
-    pub db: &'a RefCell<Database>,
+    pub app_state: Rc<AppState>,
     pub settings: &'a RefCell<Settings>,
-    pub habits: &'a RefCell<Vec<Habit>>,
     pub habit_list: &'a gtk4::Box,
     pub wsl: &'a gtk4::Label,
     pub timer_label: &'a gtk4::Label,
@@ -38,19 +40,28 @@ pub struct RowContext<'a> {
     pub window: &'a gtk4::ApplicationWindow,
 }
 
+// Convenience getters for backward compat in closures
+impl<'a> RowContext<'a> {
+    pub fn db(&self) -> &RefCell<Database> {
+        &self.app_state.db
+    }
+    pub fn habits(&self) -> &RefCell<Vec<Habit>> {
+        &self.app_state.habits
+    }
+}
+
 /// Helper to build a TimerBannerState from owned widgets + TimerShared refs.
 pub struct BannerWidgets {
     pub timer_label: gtk4::Label,
     pub timer_btn: gtk4::Button,
-    pub timer_mode_btn: gtk4::Button,
+    pub _timer_mode_btn: gtk4::Button,
 }
 
 pub struct AppView {
     root: gtk4::Box,
     pub window: gtk4::ApplicationWindow,
-    pub db: RefCell<Database>,
+    pub app_state: Rc<AppState>,
     pub settings: RefCell<Settings>,
-    pub habits: RefCell<Vec<Habit>>,
     pub timer_shared: TimerSharedRef,
     banner: BannerWidgets,
     habit_list: gtk4::Box,
@@ -128,6 +139,8 @@ impl AppView {
             timer_elapsed_before: RefCell::new(0),
             clock: clock.clone(),
             active_row: Rc::new(Cell::new(None)),
+            active_circle: Rc::new(Cell::new(None)),
+            active_habit_for_circle: RefCell::new(None),
         }));
 
         // Mode toggle button — click to switch between Pomodoro and Stopwatch
@@ -166,6 +179,29 @@ impl AppView {
                     &db_clone,
                     &settings_clone,
                 );
+                // Update the active circle label to show saved minutes
+                let (circle, habit_id, old_row) = {
+                    let ts = timer_shared_btn.borrow();
+                    let c = ts.active_circle.replace(None);
+                    let h = ts.active_habit_for_circle.replace(None);
+                    let r = ts.active_row.replace(None);
+                    (c, h, r)
+                };
+                if let Some(cir) = circle {
+                    if let Some(hid) = habit_id {
+                        let today = chrono::Local::now().naive_local().date();
+                        let mins = db_clone.borrow().get_total_minutes_for_habit_date(hid, today).unwrap_or(0);
+                        let label_text = if mins > 0 { format!("{}m", mins) } else { "?".to_string() };
+                        cir.set_label(&label_text);
+                        if mins > 0 {
+                            cir.add_css_class("day-completed");
+                        }
+                        cir.remove_css_class("day-active");
+                    }
+                }
+                if let Some(r) = old_row {
+                    r.remove_css_class("active");
+                }
             }
         });
 
@@ -233,14 +269,13 @@ impl AppView {
         let app = AppView {
             root: root.clone(),
             window: window.clone(),
-            db: RefCell::new(db.clone()),
+            app_state: Rc::new(AppState::new(db)),
             settings: RefCell::new(settings.clone()),
-            habits: RefCell::new(db.get_all_habits().unwrap_or_default()),
             timer_shared,
             banner: BannerWidgets {
                 timer_label,
                 timer_btn,
-                timer_mode_btn,
+                _timer_mode_btn: timer_mode_btn,
             },
             habit_list,
             wsl,
@@ -256,8 +291,7 @@ impl AppView {
     }
 
     fn load_rows(&self) {
-        let fresh = self.db.borrow().get_all_habits().unwrap_or_default();
-        *self.habits.borrow_mut() = fresh;
+        self.app_state.reload_habits();
 
         // Clear existing rows
         while let Some(child) = self.habit_list.first_child() {
@@ -265,29 +299,58 @@ impl AppView {
         }
 
         // Create rows
-        for habit in &*self.habits.borrow() {
+        for habit in &*self.app_state.habits.borrow() {
             let ctx = RowContext {
-                db: &self.db,
-                settings: &self.settings,
-                habits: &self.habits,
-                habit_list: &self.habit_list,
-                wsl: &self.wsl,
-                timer_label: &self.banner.timer_label,
-                timer_btn: &self.banner.timer_btn,
-                timer_shared: self.timer_shared.clone(),
-                window: &self.window,
-            };
+                            app_state: self.app_state.clone(),
+                            settings: &self.settings,
+                            habit_list: &self.habit_list,
+                            wsl: &self.wsl,
+                            timer_label: &self.banner.timer_label,
+                            timer_btn: &self.banner.timer_btn,
+                            timer_shared: self.timer_shared.clone(),
+                            window: &self.window,
+                        };
             habit_row::create_row(&ctx, habit);
         }
     }
 
     fn update_summary(&self) {
-        week_summary::update(&self.db, &self.habits, &self.wsl);
+        week_summary::update(&self.app_state.db, &self.app_state.habits, &self.wsl);
     }
 }
 
-/// Refresh from closures (called from GTK callbacks where we have RefCells but not &AppView).
+/// Refresh from closures (called from GTK callbacks where we have Rc<AppState> + other widgets).
+    #[allow(dead_code)]
 pub fn refresh_from_closures(
+    app_state: &Rc<AppState>,
+    habit_list: &gtk4::Box,
+    wsl: &gtk4::Label,
+    timer_shared: TimerSharedRef,
+    timer_label: &gtk4::Label,
+    timer_btn: &gtk4::Button,
+    settings: &RefCell<Settings>,
+    window: &gtk4::ApplicationWindow,
+) {
+    app_state.reload_habits();
+    _refresh_from_closures_impl(&app_state.db, &app_state.habits, habit_list, wsl, timer_shared, timer_label, timer_btn, settings, window);
+}
+
+/// Backward compat: refresh with separate db and habits (used by dialogs/popover).
+pub fn refresh_from_closures_compat(
+    db: &RefCell<Database>,
+    habits: &RefCell<Vec<Habit>>,
+    habit_list: &gtk4::Box,
+    wsl: &gtk4::Label,
+    timer_shared: TimerSharedRef,
+    timer_label: &gtk4::Label,
+    timer_btn: &gtk4::Button,
+    settings: &RefCell<Settings>,
+    window: &gtk4::ApplicationWindow,
+) {
+    _refresh_from_closures_impl(db, habits, habit_list, wsl, timer_shared, timer_label, timer_btn, settings, window);
+}
+
+fn _refresh_from_closures_impl(
     db: &RefCell<Database>,
     habits: &RefCell<Vec<Habit>>,
     habit_list: &gtk4::Box,
@@ -307,10 +370,14 @@ pub fn refresh_from_closures(
     }
 
     for habit in &*habits.borrow() {
+        // Rebuild rows — closures use old-style ctx but that's fine for now
+        // TODO: migrate to app_state-based ctx
         let ctx = RowContext {
-            db,
+            app_state: Rc::new(AppState {
+                db: db.clone(),
+                habits: habits.clone(),
+            }),
             settings,
-            habits,
             habit_list,
             wsl,
             timer_label,

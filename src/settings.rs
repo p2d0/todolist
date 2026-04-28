@@ -26,7 +26,9 @@ impl Default for Settings {
 
 impl Settings {
     fn settings_path() -> PathBuf {
-        PathBuf::from("pomotasker_settings.txt")
+        std::env::current_dir()
+            .expect("No cwd")
+            .join("pomotasker_settings.txt")
     }
 
     pub fn load() -> Self {
