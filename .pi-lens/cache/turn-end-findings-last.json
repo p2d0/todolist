@@ -1,0 +1,3 @@
+{
+  "signature": "src/ui/clock.rs::📐 Cascade errors in 1 other file(s) — fix before finishing turn:\n<diagnostics file=\"src/ui/mod.rs\">\n  line 67, col 34 code=E0107: expected 0 arguments, found 1\n</diagnostics>"
+}
