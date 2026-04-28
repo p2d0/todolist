@@ -11,21 +11,19 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
     let row = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
     row.add_css_class("habit-row");
 
+    // Compact layout for narrow windows: desc + edit on top, day circles below
     let top_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     let desc = gtk4::Label::new(Some(&habit.description));
     desc.set_ellipsize(EllipsizeMode::End);
     desc.set_hexpand(true);
     desc.set_selectable(true);
     desc.set_xalign(0.0);
-
-    let move_up = gtk4::Button::with_label("▲");
-    let move_down = gtk4::Button::with_label("▼");
-    move_up.add_css_class("flat");
-    move_down.add_css_class("flat");
+    desc.add_css_class("habit-desc");
 
     // Day circles (Mon-Sun)
     let week_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
     week_box.set_hexpand(true);
+    week_box.set_valign(gtk4::Align::Center);
 
     let today = Local::now().date_naive();
     let today_dow = today.weekday().number_from_monday();
@@ -158,67 +156,6 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
         week_box.append(&circle);
     }
 
-    // Move buttons logic
-    {
-        let habit_id = habit.id;
-        let habit_idx = habit.order_index;
-        let total = ctx.habits.borrow().len();
-
-        let db_u = ctx.db.clone();
-        let habits_u = ctx.habits.clone();
-        let habit_list_u = ctx.habit_list.clone();
-        let wsl_u = ctx.wsl.clone();
-        let timer_shared_u = ctx.timer_shared.clone();
-        let timer_label_u = ctx.timer_label.clone();
-        let timer_btn_u = ctx.timer_btn.clone();
-        let settings_u = ctx.settings.clone();
-        let window_u = ctx.window.clone();
-
-        move_up.connect_clicked(move |_| {
-            if habit_idx > 0 {
-                let _ = db_u.borrow_mut().move_habit(habit_id, habit_idx - 1);
-                super::refresh_from_closures(
-                    &db_u,
-                    &habits_u,
-                    &habit_list_u,
-                    &wsl_u,
-                    timer_shared_u.clone(),
-                    &timer_label_u,
-                    &timer_btn_u,
-                    &settings_u,
-                    &window_u,
-                );
-            }
-        });
-
-        let db_d = ctx.db.clone();
-        let habits_d = ctx.habits.clone();
-        let habit_list_d = ctx.habit_list.clone();
-        let wsl_d = ctx.wsl.clone();
-        let timer_shared_d = ctx.timer_shared.clone();
-        let timer_label_d = ctx.timer_label.clone();
-        let timer_btn_d = ctx.timer_btn.clone();
-        let settings_d = ctx.settings.clone();
-        let window_d = ctx.window.clone();
-
-        move_down.connect_clicked(move |_| {
-            if habit_idx < (total as i32) - 1 {
-                let _ = db_d.borrow_mut().move_habit(habit_id, habit_idx + 1);
-                super::refresh_from_closures(
-                    &db_d,
-                    &habits_d,
-                    &habit_list_d,
-                    &wsl_d,
-                    timer_shared_d.clone(),
-                    &timer_label_d,
-                    &timer_btn_d,
-                    &settings_d,
-                    &window_d,
-                );
-            }
-        });
-    }
-
     // Edit button
     let edit_btn = gtk4::Button::with_label("⋯");
     edit_btn.add_css_class("flat");
@@ -252,8 +189,6 @@ pub fn create_row(ctx: &RowContext, habit: &Habit) {
     }
 
     top_box.append(&desc);
-    top_box.append(&move_up);
-    top_box.append(&move_down);
     top_box.append(&edit_btn);
     row.append(&top_box);
     row.append(&week_box);

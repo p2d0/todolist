@@ -22,7 +22,7 @@ impl CircularClock {
 
         let drawing_area = gtk4::DrawingArea::new();
         drawing_area.add_css_class("circular-clock");
-        drawing_area.set_size_request(150, 150);
+        drawing_area.set_size_request(100, 100);
 
         drawing_area.set_draw_func(move |_widget, cr: &cairo::Context, width, height| {
             let progress = progress_clone.get();
@@ -34,7 +34,7 @@ impl CircularClock {
 
             // Background track
             cr.set_source_rgb(0.25, 0.25, 0.35);
-            cr.set_line_width(8.0);
+            cr.set_line_width(6.0);
             cr.set_line_cap(cairo::LineCap::Round);
             cr.move_to(center_x, center_y - radius);
             cr.arc(
@@ -49,7 +49,7 @@ impl CircularClock {
             // Progress arc
             if !is_stopwatch && progress > 0.0 {
                 cr.set_source_rgb(0.65, 0.89, 0.63);
-                cr.set_line_width(8.0);
+                cr.set_line_width(6.0);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let end_angle = -std::f64::consts::PI / 2.0 + progress * 2.0 * std::f64::consts::PI;
                 cr.move_to(center_x, center_y - radius);
@@ -77,7 +77,7 @@ impl CircularClock {
                 format!("{:.0}%", progress * 100.0)
             };
             cr.set_source_rgb(0.8, 0.83, 0.95);
-            cr.set_font_size(28.0);
+            cr.set_font_size(18.0);
             if let Ok(extents) = cr.text_extents(&text) {
                 cr.move_to(
                     center_x - extents.width() / 2.0,

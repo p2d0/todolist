@@ -61,10 +61,13 @@ impl AppView {
         root.add_css_class("app-view");
 
         // Timer banner
-        let timer_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+        // Timer banner (vertical: clock on top, label+button below)
+        let timer_box = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
         timer_box.add_css_class("timer-banner");
         let clock = Rc::new(clock::CircularClock::new());
-        clock.widget().set_hexpand(false);
+        clock.widget().set_hexpand(true);
+        clock.widget().set_halign(gtk4::Align::Center);
+        let sub_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
         let timer_label = gtk4::Label::new(Some("0.0 pomodoros"));
         timer_label.add_css_class("timer-banner-label");
         timer_label.set_hexpand(true);
@@ -72,11 +75,10 @@ impl AppView {
         timer_label.set_xalign(0.0);
         let timer_btn = gtk4::Button::with_label("Start");
         timer_btn.add_css_class("timer-banner-button");
+        sub_box.append(&timer_label);
+        sub_box.append(&timer_btn);
         timer_box.append(clock.widget());
-        timer_box.append(&timer_label);
-        timer_box.append(&timer_btn);
-        timer_btn.set_hexpand(true);
-        timer_btn.set_halign(gtk4::Align::End);
+        timer_box.append(&sub_box);
 
         // Habit list (scrollable)
         let scrolled = gtk4::ScrolledWindow::new();

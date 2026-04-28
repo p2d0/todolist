@@ -13,7 +13,11 @@ window {
 .timer-banner {
 	background-color: #313244;
 	border-bottom: 1px solid #45475a;
-	padding: 8px 8px;
+	padding: 12px 12px;
+}
+
+.timer-banner-sub {
+	padding: 4px 0;
 }
 
 .timer-banner-label {
@@ -57,8 +61,8 @@ window {
 
 .circular-clock {
 	background-color: transparent;
-	min-width: 150px;
-	min-height: 150px;
+	min-width: 100px;
+	min-height: 100px;
 }
 
 /* ── Habit Row ── */
