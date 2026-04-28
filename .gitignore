@@ -1,0 +1,22 @@
+# Rust build artifacts
+target/
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+
+# Pi tool caches
+.pi-lens/
+
+# Nix
+result/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~

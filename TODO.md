@@ -41,6 +41,24 @@ Build "PomoTasker" — a vertical GTK4 habit/pomodoro tracker with SQLite persis
 - [x] Display current week summary: total sessions, total time, total pomodoros
 - [x] Show streak indicator (consecutive days with at least one completed session)
 
+## New Tasks
+
+### 8. UI Polish
+- [x] Increase day circle size (e.g., 28x28 or 30x30)
+- [x] Remove mode checkboxes and duration spin from add/edit habit dialogs
+- [x] Add right-click context menu on today's circle (edit time / remove time)
+- [x] Lighten add habit button color for dark mode
+
+### 9. New Habit Types (Yes/No and Number)
+- [x] Add `habit_type` column to habits table (timer/boolean/number)
+- [x] Add `min_value` column to habits table (nullable integer)
+- [x] Add `value` column to sessions table (nullable real)
+- [x] Update Habit struct with `habit_type` and `min_value` fields
+- [x] Update DB CRUD to handle new columns
+- [x] Add type selector and optional min value to add/edit dialogs
+- [x] Implement Yes/No habit row: circle shows ✓ or empty, click toggles state
+- [x] Implement Number habit row: circle shows value, click opens dialog to enter number, circle fills green if value >= min_value
+
 ## Notes
 - Target platform: Linux, Hyprland Wayland compositor
 - Use gtk4-layer-shell for overlay window capability

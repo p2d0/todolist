@@ -1,18 +1,18 @@
 /* PomoTasker — Dark Theme (Catppuccin Mocha) */
 
 window {
-	background-color: #181825;
+	background-color: #1e1e2e;
 }
 
 .app-view {
-	background-color: #181825;
+	background-color: #1e1e2e;
 }
 
 /* ── Timer Banner ── */
 
 .timer-banner {
-	background-color: #313244;
-	border-bottom: 1px solid #45475a;
+	background-color: #2a2e3f;
+	border-bottom: 1px solid #363a4f;
 	padding: 12px 12px;
 }
 
@@ -32,29 +32,52 @@ window {
 }
 
 .timer-banner-button {
-	background-color: #45475a;
+	background-image: none;
+	border: none;
+	outline: none;
+	box-shadow: none;
+	background-color: #b4befe;
+	background-image: none;
+	border: none;
 	border-radius: 12px;
 	padding: 6px 12px;
 	font-weight: bold;
 	font-size: 12px;
-	color: #cdd6f4;
+	color: #1e1e2e;
 	transition:
 		background-color 150ms ease,
 		box-shadow 150ms ease;
 }
 
 .timer-banner-button.active {
-	background-color: #f38ba8;
-	color: #181825;
-	box-shadow: 0 0 12px rgba(243, 139, 168, 0.4);
+	background-color: #cba6f7;
+	color: #1e1e2e;
+	box-shadow: 0 0 12px rgba(203, 166, 247, 0.4);
 }
 
 .timer-banner-button:hover {
-	background-color: #585b70;
+	background-color: #c5cae9;
 }
 
 .timer-banner-button.active:hover {
-	background-color: #eba0ac;
+	background-color: #d5c6f2;
+}
+
+/* ── Timer Mode Button ── */
+
+.timer-mode-button {
+	background-color: #363a4f;
+	border-radius: 8px;
+	padding: 4px 8px;
+	font-size: 11px;
+	font-weight: bold;
+	color: #cdd6f4;
+	border: 1px solid #454a60;
+	transition: background-color 150ms ease;
+}
+
+.timer-mode-button:hover {
+	background-color: #454a60;
 }
 
 /* ── Circular Clock ── */
@@ -69,43 +92,58 @@ window {
 
 .habit-row {
 	padding: 8px 6px;
+	background-image: none;
+	border: none;
 	border-radius: 12px;
 	margin: 3px 0;
-	background-color: #313244;
-	border: 1px solid #45475a;
+	background-color: #232636;
+	border: 1px solid #363a4f;
 	transition:
 		background-color 100ms ease,
 		box-shadow 100ms ease;
 }
 
 .habit-row:hover {
-	background-color: #45475a;
+	background-color: #363a4f;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.habit-row.active {
+	background-color: #2d2a4a;
+	border: 1px solid #6c5c94;
+	box-shadow: 0 0 12px rgba(203, 166, 247, 0.15);
+}
+
 .habit-desc {
-	font-size: 12px;
-	color: #cdd6f4;
-	font-weight: 500;
+	font-size: 13px;
+	color: #e0e2e8;
+	font-weight: 600;
 }
 
 /* ── Day Circles ── */
 
 .day-circle {
 	border-radius: 50%;
-	width: 24px;
-	height: 24px;
-	min-width: 24px;
-	min-height: 24px;
-	max-width: 24px;
-	max-height: 24px;
+	width: 30px;
+	height: 30px;
+	min-width: 30px;
+	min-height: 30px;
+	max-width: 30px;
+	max-height: 30px;
 	padding: 0;
-	line-height: 24px;
-	background-color: #45475a;
-	color: #6c7086;
+	margin: 0;
+	line-height: 1;
+	text-align: center;
+	background: #2a2e3f;
+	background-color: #2a2e3f;
+	background-image: none;
+
+	color: #454a5e;
 	font-size: 9px;
 	font-weight: bold;
 	border: 2px solid transparent;
+	box-shadow: none;
+	outline: none;
 	transition:
 		background-color 100ms ease,
 		border-color 100ms ease,
@@ -113,26 +151,38 @@ window {
 }
 
 .day-circle:hover {
-	background-color: #585b70;
+	background-color: #363b50;
 }
 
 .day-circle.day-completed {
-	background-color: #a6e3a1;
-	color: #181825;
+	background: #a6e3a1;
+	background-image: none;
+	border: 2px solid #a6e3a1;
+	color: #1e1e2e;
 }
 
+
+.day-circle.day-partial {
+	background: #fab387;
+	background-image: none;
+	border: 2px solid #fab387;
+	color: #1e1e2e;
+}
 .day-circle.day-today {
-	border-color: #89b4fa;
+	border: 2px solid #89b4fa;
 }
 
 .day-circle.day-active {
+	background: #fab387;
 	background-color: #fab387;
-	color: #181825;
+	background-image: none;
+	border: 2px solid #fab387;
+	color: #1e1e2e;
 	box-shadow: 0 0 10px rgba(250, 179, 135, 0.5);
 }
 
 .day-circle.day-active.day-completed {
-	background-color: #a6e3a1;
+	background: #a6e3a1;
 }
 
 /* ── Week Summary ── */
@@ -146,29 +196,33 @@ window {
 /* ── Add Button ── */
 
 .add-button {
-	background-color: #89b4fa;
-	color: #181825;
+	background: #a6e3a1;
+	color: #1e1e2e;
+	background-image: none;
+	border: none;
 	border-radius: 12px;
 	font-weight: bold;
 	font-size: 12px;
 	padding: 10px 16px;
-	margin: 8px 0;
+	margin: 8px 16px;
 	transition:
 		background-color 100ms ease,
 		box-shadow 100ms ease;
 }
 
 .add-button:hover {
-	background-color: #b4befe;
-	box-shadow: 0 2px 8px rgba(137, 180, 250, 0.3);
+	background-color: #94e296;
+	box-shadow: 0 2px 8px rgba(166, 227, 161, 0.3);
 }
 
 /* ── Dialogs ── */
 
 dialog {
-	background-color: #313244;
+	background-color: #2a2e3f;
+	background-image: none;
+	border: none;
 	border-radius: 12px;
-	border: 1px solid #45475a;
+	border: 1px solid #363a4f;
 }
 
 dialog label {
@@ -176,7 +230,7 @@ dialog label {
 }
 
 dialog entry {
-	background-color: #45475a;
+	background-color: #363a4f;
 	color: #cdd6f4;
 	border-radius: 6px;
 }
@@ -186,19 +240,19 @@ dialog checkbutton {
 }
 
 dialog button {
-	background-color: #585b70;
+	background-color: #454a5e;
 	color: #cdd6f4;
 	border-radius: 8px;
 }
 
 dialog button:hover {
-	background-color: #89b4fa;
-	color: #181825;
+	background-color: #b4befe;
+	color: #1e1e2e;
 }
 
 dialog button.suggested-action {
-	background-color: #89b4fa;
-	color: #181825;
+	background-color: #b4befe;
+	color: #1e1e2e;
 }
 
 dialog button.suggested-action:hover {
@@ -208,22 +262,24 @@ dialog button.suggested-action:hover {
 /* ── Popover ── */
 
 popover {
-	background-color: #313244;
+	background-color: #2a2e3f;
+	background-image: none;
+	border: none;
 	border-radius: 12px;
-	border: 1px solid #45475a;
+	border: 1px solid #363a4f;
 	color: #cdd6f4;
 }
 
 popover button {
-	background-color: #45475a;
+	background-color: #363a4f;
 	color: #cdd6f4;
 	border-radius: 8px;
 	padding: 6px 12px;
 }
 
 popover button:hover {
-	background-color: #89b4fa;
-	color: #181825;
+	background-color: #b4befe;
+	color: #1e1e2e;
 }
 
 /* ── Scrolled Window ── */
@@ -244,16 +300,18 @@ scrolledwindow > viewport {
 /* ── Spin Button ── */
 
 spinbutton {
-	background-color: #45475a;
+	background-color: #363a4f;
 	color: #cdd6f4;
 	border-radius: 6px;
 }
 
 spinbutton button {
-	background-color: #585b70;
+	background-color: #454a5e;
 	color: #cdd6f4;
 }
 
 spinbutton button:hover {
-	background-color: #89b4fa;
+	background-color: #b4befe;
 }
+
+

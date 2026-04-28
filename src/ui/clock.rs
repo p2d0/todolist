@@ -4,18 +4,20 @@ use std::rc::Rc;
 use gtk4::cairo;
 use gtk4::prelude::*;
 
+use crate::db::HabitMode;
+
 pub struct CircularClock {
     drawing_area: gtk4::DrawingArea,
     progress: Rc<Cell<f64>>,
     elapsed_secs: Rc<Cell<u32>>,
-    mode: Rc<Cell<bool>>, // true = stopwatch
+    mode: Rc<Cell<HabitMode>>
 }
 
 impl CircularClock {
     pub fn new() -> Self {
         let progress: Rc<Cell<f64>> = Rc::new(Cell::new(0.0));
         let elapsed_secs: Rc<Cell<u32>> = Rc::new(Cell::new(0));
-        let mode: Rc<Cell<bool>> = Rc::new(Cell::new(false));
+        let mode: Rc<Cell<HabitMode>> = Rc::new(Cell::new(HabitMode::Timed));
         let progress_clone = progress.clone();
         let elapsed_clone = elapsed_secs.clone();
         let mode_clone = mode.clone();
@@ -27,13 +29,13 @@ impl CircularClock {
         drawing_area.set_draw_func(move |_widget, cr: &cairo::Context, width, height| {
             let progress = progress_clone.get();
             let elapsed = elapsed_clone.get();
-            let is_stopwatch = mode_clone.get();
+            let is_stopwatch = matches!(mode_clone.get(), HabitMode::Stopwatch);
             let center_x = width as f64 / 2.0;
             let center_y = height as f64 / 2.0;
             let radius = (width as f64 / 2.0).min(height as f64 / 2.0) - 12.0;
 
             // Background track
-            cr.set_source_rgb(0.25, 0.25, 0.35);
+            cr.set_source_rgb(0.212, 0.227, 0.310);
             cr.set_line_width(6.0);
             cr.set_line_cap(cairo::LineCap::Round);
             cr.move_to(center_x, center_y - radius);
@@ -98,15 +100,22 @@ impl CircularClock {
     pub fn set_progress(&self, value: f64) {
         self.progress.set(value.min(1.0).max(0.0));
         self.elapsed_secs.set(0);
-        self.mode.set(false);
         self.drawing_area.queue_draw();
     }
 
     pub fn set_stopwatch_elapsed(&self, secs: u32) {
         self.elapsed_secs.set(secs);
-        self.mode.set(true);
         self.progress.set(0.0);
         self.drawing_area.queue_draw();
+    }
+
+    pub fn set_mode(&self, mode: HabitMode) {
+        self.mode.set(mode);
+        self.drawing_area.queue_draw();
+    }
+
+    pub fn get_mode(&self) -> HabitMode {
+        self.mode.get()
     }
 
     pub fn widget(&self) -> &gtk4::DrawingArea {

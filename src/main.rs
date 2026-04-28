@@ -5,7 +5,7 @@ use crate::db::Database;
 use crate::settings::Settings;
 use crate::ui::AppView;
 
-mod db;
+pub mod db;
 mod settings;
 mod ui;
 

@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use gtk4::prelude::*;
 
-use crate::db::Habit;
+use crate::db::{Habit, HabitMode};
 use crate::settings::Settings;
 
 pub type TimerSharedRef = Rc<RefCell<crate::ui::TimerShared>>;
@@ -12,6 +12,7 @@ pub fn start(
     label: &gtk4::Label,
     btn: &gtk4::Button,
     habit: &Habit,
+    mode: HabitMode,
     shared: TimerSharedRef,
     settings: &RefCell<Settings>,
 ) {
@@ -21,6 +22,7 @@ pub fn start(
         .timer_start_instant
         .replace(Some(std::time::Instant::now()));
     shared.borrow_mut().timer_elapsed_before.replace(0);
+    shared.borrow().clock.set_mode(mode);
     btn.set_label("Stop");
     btn.set_css_classes(&["timer-banner-button", "active"]);
     label.set_css_classes(&["timer-banner-label", "active"]);
@@ -67,6 +69,7 @@ pub fn stop(
     btn.set_css_classes(&["timer-banner-button"]);
     label.set_label("0.0 pomodoros");
     label.set_css_classes(&["timer-banner-label"]);
+    shared.borrow().clock.set_mode(HabitMode::Timed);
     shared.borrow().clock.set_progress(0.0);
 }
 
@@ -96,7 +99,8 @@ pub fn update_tick(
         None => elapsed_before,
     };
 
-    if habit.mode == crate::db::HabitMode::Timed && elapsed >= habit.timer_duration_seconds {
+    let mode = shared.borrow().clock.get_mode();
+    if mode == HabitMode::Timed && elapsed >= habit.timer_duration_seconds {
         stop(label, btn, shared.clone(), db, settings);
         return;
     }
@@ -112,11 +116,14 @@ pub fn update_display(
     shared: &TimerSharedRef,
 ) {
     let clock = shared.borrow().clock.clone();
-    if habit.mode == crate::db::HabitMode::Timed {
+    let mode = clock.get_mode();
+    if mode == HabitMode::Timed {
         let remaining = habit.timer_duration_seconds.saturating_sub(elapsed);
         let pomos = elapsed as f64 / habit.timer_duration_seconds as f64;
         let text = if remaining > 0 {
-            format!("{:.1} pomodoros ({}s left)", pomos, remaining)
+            let mins = remaining / 60;
+            let secs = remaining % 60;
+            format!("{:.1} pomodoros ({:02}:{:02} left)", pomos, mins, secs)
         } else {
             format!("{:.1} pomodoros (complete!)", pomos)
         };

@@ -9,12 +9,21 @@ pub struct Habit {
     pub order_index: i32,
     pub timer_duration_seconds: u32, // 0 = stopwatch mode
     pub mode: HabitMode,
+    pub habit_type: HabitType,
+    pub min_value: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HabitMode {
     Timed,     // countdown timer
     Stopwatch, // elapsed timer
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HabitType {
+    Timer,
+    Boolean,
+    Number,
 }
 
 pub struct Database {
@@ -35,6 +44,7 @@ impl Database {
     pub fn new(path: &str) -> Result<Self> {
         let path_buf = PathBuf::from(path);
         let conn = Connection::open(&path_buf)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL")?;
         let db = Database {
             conn,
             path: path_buf,
@@ -51,7 +61,9 @@ impl Database {
                 description TEXT NOT NULL,
                 order_index INTEGER NOT NULL,
                 timer_duration_seconds INTEGER NOT NULL DEFAULT 0,
-                mode TEXT NOT NULL DEFAULT 'stopwatch'
+                mode TEXT NOT NULL DEFAULT 'stopwatch',
+                habit_type TEXT NOT NULL DEFAULT 'timer',
+                min_value INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -60,12 +72,21 @@ impl Database {
                 date TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
                 completed_at TEXT NOT NULL,
+                value REAL,
                 FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
             );
 
             CREATE INDEX IF NOT EXISTS idx_sessions_habit_date ON sessions(habit_id, date);
             ",
         )?;
+        // Migrate existing columns if they don't exist
+        let _ = self.conn.execute(
+            "ALTER TABLE habits ADD COLUMN habit_type TEXT NOT NULL DEFAULT 'timer'",
+            params![],
+        );
+        let _ = self.conn.execute("ALTER TABLE habits ADD COLUMN min_value INTEGER", params![]);
+        let _ = self.conn.execute("ALTER TABLE sessions ADD COLUMN value REAL", params![]);
+        let _ = self.conn.execute("UPDATE habits SET timer_duration_seconds = 1500 WHERE timer_duration_seconds = 0", params![]);
         Ok(())
     }
 
@@ -76,6 +97,8 @@ impl Database {
         description: &str,
         timer_duration_seconds: u32,
         mode: HabitMode,
+        habit_type: HabitType,
+        min_value: Option<u32>,
     ) -> Result<Habit> {
         let max_order = self
             .conn
@@ -90,10 +113,15 @@ impl Database {
             HabitMode::Timed => "timed",
             HabitMode::Stopwatch => "stopwatch",
         };
+        let type_str = match habit_type {
+            HabitType::Timer => "timer",
+            HabitType::Boolean => "boolean",
+            HabitType::Number => "number",
+        };
 
         self.conn.execute(
-            "INSERT INTO habits (description, order_index, timer_duration_seconds, mode) VALUES (?, ?, ?, ?)",
-            params![description, max_order, timer_duration_seconds, mode_str],
+            "INSERT INTO habits (description, order_index, timer_duration_seconds, mode, habit_type, min_value) VALUES (?, ?, ?, ?, ?, ?)",
+            params![description, max_order, timer_duration_seconds, mode_str, type_str, min_value],
         )?;
 
         self.get_habit(self.conn.last_insert_rowid())
@@ -101,7 +129,7 @@ impl Database {
 
     pub fn get_habit(&self, id: i64) -> Result<Habit> {
         self.conn.query_row(
-            "SELECT id, description, order_index, timer_duration_seconds, mode FROM habits WHERE id = ?",
+            "SELECT id, description, order_index, timer_duration_seconds, mode, habit_type, min_value FROM habits WHERE id = ?",
             params![id],
             |row| Ok(Habit {
                 id: row.get(0)?,
@@ -109,13 +137,15 @@ impl Database {
                 order_index: row.get(2)?,
                 timer_duration_seconds: row.get(3)?,
                 mode: Self::parse_mode(row.get(4)?),
+                habit_type: Self::parse_habit_type(row.get(5)?),
+                min_value: row.get(6)?,
             }),
         )
     }
 
     pub fn get_all_habits(&self) -> Result<Vec<Habit>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, description, order_index, timer_duration_seconds, mode FROM habits ORDER BY order_index ASC"
+            "SELECT id, description, order_index, timer_duration_seconds, mode, habit_type, min_value FROM habits ORDER BY order_index ASC"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Habit {
@@ -124,6 +154,8 @@ impl Database {
                 order_index: row.get(2)?,
                 timer_duration_seconds: row.get(3)?,
                 mode: Self::parse_mode(row.get(4)?),
+                habit_type: Self::parse_habit_type(row.get(5)?),
+                min_value: row.get(6)?,
             })
         })?;
         rows.collect()
@@ -135,15 +167,22 @@ impl Database {
         description: &str,
         timer_duration_seconds: u32,
         mode: HabitMode,
+        habit_type: HabitType,
+        min_value: Option<u32>,
     ) -> Result<()> {
         let mode_str = match mode {
             HabitMode::Timed => "timed",
             HabitMode::Stopwatch => "stopwatch",
         };
+        let type_str = match habit_type {
+            HabitType::Timer => "timer",
+            HabitType::Boolean => "boolean",
+            HabitType::Number => "number",
+        };
 
         self.conn.execute(
-            "UPDATE habits SET description = ?, timer_duration_seconds = ?, mode = ? WHERE id = ?",
-            params![description, timer_duration_seconds, mode_str, id],
+            "UPDATE habits SET description = ?, timer_duration_seconds = ?, mode = ?, habit_type = ?, min_value = ? WHERE id = ?",
+            params![description, timer_duration_seconds, mode_str, type_str, min_value, id],
         )?;
         Ok(())
     }
@@ -248,6 +287,33 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_total_minutes_for_habit_date(&self, habit_id: i64, date: NaiveDate) -> Result<u32> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let total: Option<i64> = self.conn.query_row(
+            "SELECT COALESCE(SUM(duration_seconds), 0) FROM sessions WHERE habit_id = ? AND date = ?",
+            params![habit_id, date_str],
+            |row| row.get(0),
+        ).ok();
+        Ok(total.unwrap_or(0) as u32 / 60)
+    }
+
+    pub fn delete_sessions_for_habit_date(&self, habit_id: i64, date: NaiveDate) -> Result<()> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        self.conn.execute(
+            "DELETE FROM sessions WHERE habit_id = ? AND date = ?",
+            params![habit_id, date_str],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_session_duration(&self, session_id: i64, duration_seconds: u32) -> Result<()> {
+        self.conn.execute(
+            "UPDATE sessions SET duration_seconds = ? WHERE id = ?",
+            params![duration_seconds, session_id],
+        )?;
+        Ok(())
+    }
+
     pub fn get_streak_days(&self, habit_id: i64) -> Result<u32> {
         // Count consecutive days ending with today that have at least one session
         let today = chrono::Local::now().date_naive();
@@ -282,6 +348,50 @@ impl Database {
             _ => HabitMode::Stopwatch,
         }
     }
+
+    fn parse_habit_type(s: String) -> HabitType {
+        match s.as_str() {
+            "boolean" => HabitType::Boolean,
+            "number" => HabitType::Number,
+            _ => HabitType::Timer,
+        }
+    }
+
+    // --- Value methods for boolean/number habits ---
+
+    pub fn get_value_for_habit_date(&self, habit_id: i64, date: NaiveDate) -> Result<Option<f64>> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let mut stmt = self.conn.prepare(
+            "SELECT value FROM sessions WHERE habit_id = ? AND date = ? ORDER BY id DESC LIMIT 1"
+        )?;
+        let rows: Vec<f64> = stmt.query_map(params![habit_id, date_str], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows.into_iter().next())
+    }
+
+    pub fn set_value_for_habit_date(
+        &self,
+        habit_id: i64,
+        date: NaiveDate,
+        value: f64,
+    ) -> Result<()> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        self.conn.execute(
+            "INSERT INTO sessions (habit_id, date, duration_seconds, completed_at, value) VALUES (?, ?, 0, ?, ?)",
+            params![habit_id, date_str, now_str, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_value_for_habit_date(&self, habit_id: i64, date: NaiveDate) -> Result<()> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        self.conn.execute(
+            "DELETE FROM sessions WHERE habit_id = ? AND date = ?",
+            params![habit_id, date_str],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -295,7 +405,7 @@ mod tests {
     #[test]
     fn add_and_get_habit() {
         let db = test_db();
-        let habit = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let habit = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         assert_eq!(habit.description, "Read");
         assert_eq!(habit.timer_duration_seconds, 1500);
         assert_eq!(habit.mode, HabitMode::Timed);
@@ -309,9 +419,9 @@ mod tests {
     #[test]
     fn add_multiple_habits_order() {
         let db = test_db();
-        let h1 = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
-        let h2 = db.add_habit("Code", 900, HabitMode::Stopwatch).unwrap();
-        let h3 = db.add_habit("Stretch", 0, HabitMode::Stopwatch).unwrap();
+        let h1 = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
+        let h2 = db.add_habit("Code", 900, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h3 = db.add_habit("Stretch", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         assert_eq!(h1.order_index, 0);
         assert_eq!(h2.order_index, 1);
@@ -321,9 +431,9 @@ mod tests {
     #[test]
     fn get_all_habits_ordered() {
         let db = test_db();
-        db.add_habit("C", 0, HabitMode::Stopwatch).unwrap();
-        db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        db.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
+        db.add_habit("C", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        db.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         let all = db.get_all_habits().unwrap();
         assert_eq!(all.len(), 3);
@@ -335,8 +445,8 @@ mod tests {
     #[test]
     fn update_habit() {
         let db = test_db();
-        let h = db.add_habit("Old", 0, HabitMode::Stopwatch).unwrap();
-        db.update_habit(h.id, "New", 1500, HabitMode::Timed)
+        let h = db.add_habit("Old", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        db.update_habit(h.id, "New", 1500, HabitMode::Timed, HabitType::Timer, None)
             .unwrap();
 
         let updated = db.get_habit(h.id).unwrap();
@@ -348,9 +458,9 @@ mod tests {
     #[test]
     fn delete_habit_reorders() {
         let mut db = test_db();
-        let h1 = db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        let h2 = db.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
-        let h3 = db.add_habit("C", 0, HabitMode::Stopwatch).unwrap();
+        let h1 = db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h2 = db.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h3 = db.add_habit("C", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         db.delete_habit(h2.id).unwrap();
 
@@ -365,7 +475,7 @@ mod tests {
     #[test]
     fn insert_and_query_session() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
         db.insert_session(h.id, date, 1500, "2025-01-15 10:00:00")
@@ -380,7 +490,7 @@ mod tests {
     #[test]
     fn delete_session() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
         db.insert_session(h.id, date, 1500, "2025-01-15 10:00:00")
             .unwrap();
@@ -395,7 +505,7 @@ mod tests {
     #[test]
     fn has_session_false() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
         assert!(!db.has_session_for_date(h.id, date).unwrap());
     }
@@ -403,7 +513,7 @@ mod tests {
     #[test]
     fn multiple_sessions_same_day() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
         db.insert_session(h.id, date, 1500, "2025-01-15 10:00:00")
@@ -418,10 +528,10 @@ mod tests {
     #[test]
     fn move_habit_down() {
         let mut db = test_db();
-        let h0 = db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        let h1 = db.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
-        let h2 = db.add_habit("C", 0, HabitMode::Stopwatch).unwrap();
-        let h3 = db.add_habit("D", 0, HabitMode::Stopwatch).unwrap();
+        let h0 = db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h1 = db.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h2 = db.add_habit("C", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h3 = db.add_habit("D", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         db.move_habit(h1.id, 3).unwrap();
 
@@ -435,10 +545,10 @@ mod tests {
     #[test]
     fn move_habit_up() {
         let mut db = test_db();
-        let h0 = db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        let h1 = db.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
-        let h2 = db.add_habit("C", 0, HabitMode::Stopwatch).unwrap();
-        let h3 = db.add_habit("D", 0, HabitMode::Stopwatch).unwrap();
+        let h0 = db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h1 = db.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h2 = db.add_habit("C", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h3 = db.add_habit("D", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         db.move_habit(h3.id, 1).unwrap();
 
@@ -452,8 +562,8 @@ mod tests {
     #[test]
     fn move_habit_same_index_noop() {
         let mut db = test_db();
-        let h0 = db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        let h1 = db.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
+        let h0 = db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h1 = db.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         db.move_habit(h1.id, 1).unwrap();
 
@@ -465,7 +575,7 @@ mod tests {
     #[test]
     fn move_habit_out_of_bounds_noop() {
         let mut db = test_db();
-        let h = db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
+        let h = db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         db.move_habit(h.id, 99).unwrap();
         let all = db.get_all_habits().unwrap();
@@ -475,9 +585,9 @@ mod tests {
     #[test]
     fn reorder_habits() {
         let mut db = test_db();
-        db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        db.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
-        db.add_habit("C", 0, HabitMode::Stopwatch).unwrap();
+        db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        db.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        db.add_habit("C", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         // Manually mess up order
         db.conn
@@ -498,7 +608,7 @@ mod tests {
     #[test]
     fn streak_today() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let today = chrono::Local::now().date_naive();
         db.insert_session(h.id, today, 1500, "2025-01-15 10:00:00")
             .unwrap();
@@ -510,7 +620,7 @@ mod tests {
     #[test]
     fn streak_consecutive_days() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let today = chrono::Local::now().date_naive();
 
         for i in 0..5 {
@@ -526,7 +636,7 @@ mod tests {
     #[test]
     fn streak_breaks_on_gap() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let today = chrono::Local::now().date_naive();
 
         // today, yesterday, 4 days ago (gap on 3 days ago)
@@ -554,7 +664,7 @@ mod tests {
     #[test]
     fn streak_zero_no_sessions() {
         let db = test_db();
-        let h = db.add_habit("Read", 1500, HabitMode::Timed).unwrap();
+        let h = db.add_habit("Read", 1500, HabitMode::Timed, HabitType::Timer, None).unwrap();
         let streak = db.get_streak_days(h.id).unwrap();
         assert_eq!(streak, 0);
     }
@@ -567,8 +677,8 @@ mod tests {
         let db = Database::new(&path).unwrap();
         let db2 = db.clone();
 
-        let h1 = db.add_habit("A", 0, HabitMode::Stopwatch).unwrap();
-        let h2 = db2.add_habit("B", 0, HabitMode::Stopwatch).unwrap();
+        let h1 = db.add_habit("A", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
+        let h2 = db2.add_habit("B", 0, HabitMode::Stopwatch, HabitType::Timer, None).unwrap();
 
         assert_eq!(h1.description, "A");
         assert_eq!(h2.description, "B");

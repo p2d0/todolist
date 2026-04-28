@@ -1,10 +1,10 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk4::glib;
 use gtk4::prelude::*;
 
-use crate::db::{Database, Habit};
+use crate::db::{Database, Habit, HabitMode};
 use crate::settings::Settings;
 
 mod clock;
@@ -20,6 +20,7 @@ pub struct TimerShared {
     pub timer_start_instant: RefCell<Option<std::time::Instant>>,
     pub timer_elapsed_before: RefCell<u32>,
     pub clock: Rc<clock::CircularClock>,
+    pub active_row: Rc<Cell<Option<gtk4::Box>>>,
 }
 
 pub type TimerSharedRef = Rc<RefCell<TimerShared>>;
@@ -41,6 +42,7 @@ pub struct RowContext<'a> {
 pub struct BannerWidgets {
     pub timer_label: gtk4::Label,
     pub timer_btn: gtk4::Button,
+    pub timer_mode_btn: gtk4::Button,
 }
 
 pub struct AppView {
@@ -75,7 +77,11 @@ impl AppView {
         timer_label.set_xalign(0.0);
         let timer_btn = gtk4::Button::with_label("Start");
         timer_btn.add_css_class("timer-banner-button");
+        // Mode toggle button (P = Pomodoro, S = Stopwatch)
+        let timer_mode_btn = gtk4::Button::with_label("P");
+        timer_mode_btn.add_css_class("timer-mode-button");
         sub_box.append(&timer_label);
+        sub_box.append(&timer_mode_btn);
         sub_box.append(&timer_btn);
         timer_box.append(clock.widget());
         timer_box.append(&sub_box);
@@ -96,6 +102,7 @@ impl AppView {
         // Add button
         let add_button = gtk4::Button::with_label("+ Add Habit");
         add_button.add_css_class("add-button");
+        add_button.set_hexpand(true);
 
         root.append(&timer_box);
         root.append(&scrolled);
@@ -120,7 +127,23 @@ impl AppView {
             timer_start_instant: RefCell::new(None),
             timer_elapsed_before: RefCell::new(0),
             clock: clock.clone(),
+            active_row: Rc::new(Cell::new(None)),
         }));
+
+        // Mode toggle button — click to switch between Pomodoro and Stopwatch
+        {
+            let clock_m = clock.clone();
+            timer_mode_btn.connect_clicked(move |btn| {
+                let current = clock_m.get_mode();
+                let next = if matches!(current, HabitMode::Timed) {
+                    HabitMode::Stopwatch
+                } else {
+                    HabitMode::Timed
+                };
+                clock_m.set_mode(next);
+                btn.set_label(if matches!(next, HabitMode::Timed) { "P" } else { "S" });
+            });
+        }
 
         // Timer button signal
         let btn_clone = timer_btn.clone();
@@ -217,6 +240,7 @@ impl AppView {
             banner: BannerWidgets {
                 timer_label,
                 timer_btn,
+                timer_mode_btn,
             },
             habit_list,
             wsl,
@@ -283,290 +307,19 @@ pub fn refresh_from_closures(
     }
 
     for habit in &*habits.borrow() {
-        create_minimal_row(
+        let ctx = RowContext {
             db,
+            settings,
             habits,
             habit_list,
             wsl,
-            habit,
-            timer_shared.clone(),
             timer_label,
             timer_btn,
-            settings,
+            timer_shared: timer_shared.clone(),
             window,
-        );
+        };
+        habit_row::create_row(&ctx, habit);
     }
     week_summary::update(db, habits, wsl);
 }
 
-/// Create a minimal row with timer state (used from refresh_from_closures).
-fn create_minimal_row(
-    db: &RefCell<Database>,
-    habits: &RefCell<Vec<Habit>>,
-    habit_list: &gtk4::Box,
-    wsl: &gtk4::Label,
-    habit: &Habit,
-    timer_shared: TimerSharedRef,
-    timer_label: &gtk4::Label,
-    timer_btn: &gtk4::Button,
-    settings: &RefCell<Settings>,
-    window: &gtk4::ApplicationWindow,
-) {
-    use chrono::Datelike;
-    use pango::EllipsizeMode;
-
-    let row = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-    row.add_css_class("habit-row");
-
-    let top_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
-    let desc = gtk4::Label::new(Some(&habit.description));
-    desc.set_ellipsize(EllipsizeMode::End);
-    desc.set_hexpand(true);
-    desc.set_selectable(true);
-    desc.set_xalign(0.0);
-
-    let move_up = gtk4::Button::with_label("▲");
-    let move_down = gtk4::Button::with_label("▼");
-    move_up.add_css_class("flat");
-    move_down.add_css_class("flat");
-
-    let week_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 2);
-    week_box.set_hexpand(true);
-
-    let today = chrono::Local::now().date_naive();
-    let today_dow = today.weekday().number_from_monday();
-    let week_start = today - chrono::Duration::days((today_dow as u64 - 1) as i64);
-
-    for i in 0i64..7 {
-        let date = week_start + chrono::Duration::days(i);
-        let day_num = date.weekday().number_from_monday() as i64;
-        let day_label = match day_num {
-            1 => "M",
-            2 => "T",
-            3 => "W",
-            4 => "T",
-            5 => "F",
-            6 => "S",
-            7 => "S",
-            _ => "?",
-        };
-
-        let circle = gtk4::Button::with_label(day_label);
-        circle.add_css_class("day-circle");
-
-        let has_session = db
-            .borrow()
-            .has_session_for_date(habit.id, date)
-            .unwrap_or(false);
-        if has_session {
-            circle.add_css_class("day-completed");
-        }
-
-        let is_today = i == (today_dow as i64 - 1);
-        if is_today {
-            circle.add_css_class("day-today");
-        }
-
-        // Restore day-active if this habit has active timer
-        let is_active = {
-            let s = timer_shared.borrow();
-            let aid = s.active_habit_id.borrow();
-            *aid == Some(habit.id)
-        };
-        if is_today && is_active {
-            circle.add_css_class("day-active");
-            circle.add_css_class("day-completed");
-        }
-
-        let db_c = db.clone();
-        let habits_c = habits.clone();
-        let list_c = habit_list.clone();
-        let wsl_c = wsl.clone();
-        let timer_shared_c = timer_shared.clone();
-        let timer_label_c = timer_label.clone();
-        let timer_btn_c = timer_btn.clone();
-        let settings_c = settings.clone();
-        let window_c = window.clone();
-        let habit_c = habit.clone();
-        let habit_id = habit.id;
-        let habit_duration = habit.timer_duration_seconds;
-        let is_today = is_today;
-        let has_session = has_session;
-        let circle_c = circle.clone();
-        let date_d = date;
-
-        circle.connect_clicked(move |_| {
-            let aid_val = {
-                let s = timer_shared_c.borrow();
-                let aid = s.active_habit_id.borrow();
-                *aid
-            };
-            if is_today {
-                if aid_val == Some(habit_id) {
-                    timer_banner::stop(
-                        &timer_label_c,
-                        &timer_btn_c,
-                        timer_shared_c.clone(),
-                        &db_c,
-                        &settings_c,
-                    );
-                    circle_c.remove_css_class("day-completed");
-                } else {
-                    // Stop old habit first if switching
-                    if aid_val.is_some() {
-                        timer_banner::stop(
-                            &timer_label_c,
-                            &timer_btn_c,
-                            timer_shared_c.clone(),
-                            &db_c,
-                            &settings_c,
-                        );
-                    }
-                    timer_banner::start(
-                        &timer_label_c,
-                        &timer_btn_c,
-                        &habit_c,
-                        timer_shared_c.clone(),
-                        &settings_c,
-                    );
-                    circle_c.add_css_class("day-active");
-                    circle_c.add_css_class("day-completed");
-                }
-            } else {
-                if has_session {
-                    if let Ok(sessions) =
-                        db_c.borrow().get_sessions_for_habit_date(habit_id, date_d)
-                    {
-                        if let Some(s) = sessions.first() {
-                            let _ = db_c.borrow().delete_session(*s);
-                        }
-                    }
-                    circle_c.remove_css_class("day-completed");
-                } else {
-                    let now_str = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                    let _ =
-                        db_c.borrow()
-                            .insert_session(habit_id, date_d, habit_duration, &now_str);
-                    circle_c.add_css_class("day-completed");
-                }
-            }
-            refresh_from_closures(
-                &db_c,
-                &habits_c,
-                &list_c,
-                &wsl_c,
-                timer_shared_c.clone(),
-                &timer_label_c,
-                &timer_btn_c,
-                &settings_c,
-                &window_c,
-            );
-        });
-
-        week_box.append(&circle);
-    }
-
-    {
-        let db_c = db.clone();
-        let habits_c = habits.clone();
-        let list_c = habit_list.clone();
-        let wsl_c = wsl.clone();
-        let timer_shared_c = timer_shared.clone();
-        let timer_label_c = timer_label.clone();
-        let timer_btn_c = timer_btn.clone();
-        let settings_c = settings.clone();
-        let idx = habit.order_index;
-        let _total = habits.borrow().len();
-        let habit_id = habit.id;
-        let window_c = window.clone();
-
-        move_up.connect_clicked(move |_| {
-            if idx > 0 {
-                let _ = db_c.borrow_mut().move_habit(habit_id, idx - 1);
-                refresh_from_closures(
-                    &db_c,
-                    &habits_c,
-                    &list_c,
-                    &wsl_c,
-                    timer_shared_c.clone(),
-                    &timer_label_c,
-                    &timer_btn_c,
-                    &settings_c,
-                    &window_c,
-                );
-            }
-        });
-    }
-
-    {
-        let db_c = db.clone();
-        let habits_c = habits.clone();
-        let list_c = habit_list.clone();
-        let wsl_c = wsl.clone();
-        let timer_shared_c = timer_shared.clone();
-        let timer_label_c = timer_label.clone();
-        let timer_btn_c = timer_btn.clone();
-        let settings_c = settings.clone();
-        let idx = habit.order_index;
-        let total = habits.borrow().len();
-        let habit_id = habit.id;
-        let window_c = window.clone();
-
-        move_down.connect_clicked(move |_| {
-            if idx < total as i32 - 1 {
-                let _ = db_c.borrow_mut().move_habit(habit_id, idx + 1);
-                refresh_from_closures(
-                    &db_c,
-                    &habits_c,
-                    &list_c,
-                    &wsl_c,
-                    timer_shared_c.clone(),
-                    &timer_label_c,
-                    &timer_btn_c,
-                    &settings_c,
-                    &window_c,
-                );
-            }
-        });
-    }
-
-    let edit_btn = gtk4::Button::with_label("⋯");
-    edit_btn.add_css_class("flat");
-
-    {
-        let window_e = window.clone();
-        let db_e = db.clone();
-        let settings_e = settings.clone();
-        let habits_e = habits.clone();
-        let list_e = habit_list.clone();
-        let wsl_e = wsl.clone();
-        let timer_shared_e = timer_shared.clone();
-        let timer_label_e = timer_label.clone();
-        let timer_btn_e = timer_btn.clone();
-        let habit_e = habit.clone();
-
-        edit_btn.connect_clicked(move |_| {
-            dialogs::show_habit_menu(
-                &window_e,
-                &db_e,
-                &settings_e,
-                &habits_e,
-                &list_e,
-                &wsl_e,
-                timer_shared_e.clone(),
-                &timer_label_e,
-                &timer_btn_e,
-                &habit_e,
-            );
-        });
-    }
-
-    top_box.append(&desc);
-    top_box.append(&move_up);
-    top_box.append(&move_down);
-    top_box.append(&edit_btn);
-    row.append(&top_box);
-    row.append(&week_box);
-
-    habit_list.append(&row);
-}
