@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use chrono::{Datelike, Local};
 
-use crate::db::Habit;
+use crate::db::{Habit, HabitType};
 
 pub fn update(
     db: &RefCell<crate::db::Database>,
@@ -19,6 +19,7 @@ pub fn update(
 
     for habit in &*habits.borrow() {
         let mut sessions = 0u32;
+        let mut timer_minutes = 0u32;
         for i in 0i64..7 {
             let date = week_start + chrono::Duration::days(i);
             if let Ok(has) = db.borrow().has_session_for_date(habit.id, date) {
@@ -26,11 +27,19 @@ pub fn update(
                     sessions += 1;
                 }
             }
+            // Sum actual timer minutes for timer-type habits
+            if habit.habit_type == HabitType::Timer {
+                if let Ok(mins) = db.borrow().get_total_minutes_for_habit_date(habit.id, date) {
+                    timer_minutes += mins;
+                }
+            }
         }
         total_sessions += sessions;
 
-        if habit.timer_duration_seconds > 0 {
-            total_pomodoros += sessions as f64;
+        // Convert actual minutes to pomodoros using habit's target duration
+        if habit.habit_type == HabitType::Timer && habit.timer_duration_seconds > 0 && timer_minutes > 0 {
+            let duration_mins = habit.timer_duration_seconds as f64 / 60.0;
+            total_pomodoros += timer_minutes as f64 / duration_mins;
         }
 
         let streak = db.borrow().get_streak_days(habit.id).unwrap_or(0);
