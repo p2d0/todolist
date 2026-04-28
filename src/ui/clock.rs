@@ -22,7 +22,7 @@ impl CircularClock {
 
         let drawing_area = gtk4::DrawingArea::new();
         drawing_area.add_css_class("circular-clock");
-        drawing_area.set_size_request(200, 200);
+        drawing_area.set_size_request(150, 150);
 
         drawing_area.set_draw_func(move |_widget, cr: &cairo::Context, width, height| {
             let progress = progress_clone.get();

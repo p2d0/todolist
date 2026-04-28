@@ -64,8 +64,12 @@ impl AppView {
         let timer_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
         timer_box.add_css_class("timer-banner");
         let clock = Rc::new(clock::CircularClock::new());
+        clock.widget().set_hexpand(false);
         let timer_label = gtk4::Label::new(Some("0.0 pomodoros"));
         timer_label.add_css_class("timer-banner-label");
+        timer_label.set_hexpand(true);
+        timer_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        timer_label.set_xalign(0.0);
         let timer_btn = gtk4::Button::with_label("Start");
         timer_btn.add_css_class("timer-banner-button");
         timer_box.append(clock.widget());
@@ -78,8 +82,8 @@ impl AppView {
         let scrolled = gtk4::ScrolledWindow::new();
         scrolled.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
         let habit_list = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-        habit_list.set_margin_start(8);
-        habit_list.set_margin_end(8);
+        habit_list.set_margin_start(4);
+        habit_list.set_margin_end(4);
         scrolled.set_child(Some(&habit_list));
         scrolled.set_vexpand(true);
 
