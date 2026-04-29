@@ -17,7 +17,7 @@
 
           src = ./.;
 
-          nativeBuildInputs = [ final.pkg-config final.wrapGAppsHook4 ];
+          nativeBuildInputs = [ final.pkg-config final.wrapGAppsHook4 final.makeDesktopItem ];
 
           buildInputs = [
             final.gtk4
@@ -31,10 +31,17 @@
 
           cargoLock.lockFile = ./Cargo.lock;
 
-          postInstall = ''
-            mkdir -p $out/share/applications
-            cp ${./share/applications/com.pomotasker.app.desktop} $out/share/applications/
-          '';
+          desktopItems = [
+            {
+              name = "com.pomotasker.app.desktop";
+              exec = "pomotasker";
+              icon = "com.pomotasker.app";
+              name = "PomoTasker";
+              comment = "Pomodoro habit tracker";
+              terminal = false;
+              categories = "Utility;";
+            }
+          ];
 
           NIX_LDFLAGS = "-rpath ${
             final.lib.makeLibraryPath [
