@@ -1,0 +1,14 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Tomato Body -->
+  <rect x="30" y="50" width="140" height="120" rx="60" fill="#FF5252"/>
+  
+  <!-- Tomato Shine/Depth -->
+  <path d="M60 80C60 70 80 60 100 60" stroke="white" stroke-width="8" stroke-linecap="round" opacity="0.3"/>
+  
+  <!-- Task Leaf / Checkmark -->
+  <path d="M100 20C100 20 95 45 80 55" stroke="#2D3436" stroke-width="12" stroke-linecap="round"/>
+  <path d="M100 20C100 20 105 45 120 55" stroke="#2D3436" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- The Completion Check -->
+  <path d="M75 115L95 135L135 95" stroke="white" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
