@@ -12,12 +12,16 @@
 
       overlay = final: prev: {
         pomotasker = final.rustPlatform.buildRustPackage {
-          name = "pomotasker";
+          pname = "pomotasker";
           version = "0.1.0";
 
           src = ./.;
 
-          nativeBuildInputs = [ final.pkg-config final.wrapGAppsHook4 final.makeDesktopItem ];
+          nativeBuildInputs = [ 
+            final.pkg-config 
+            final.wrapGAppsHook4 
+            final.copyDesktopItems # This helps automate desktop file installation
+          ];
 
           buildInputs = [
             final.gtk4
@@ -31,29 +35,29 @@
 
           cargoLock.lockFile = ./Cargo.lock;
 
+          # Define the desktop item here
           desktopItems = [
-            {
-              name = "com.pomotasker.app.desktop";
+            (final.makeDesktopItem {
+              name = "com.pomotasker.app";
               exec = "pomotasker";
               icon = "com.pomotasker.app";
-              name = "PomoTasker";
+              desktopName = "PomoTasker"; # Use desktopName for the display name
               comment = "Pomodoro habit tracker";
               terminal = false;
-              categories = "Utility;";
-            }
+              categories = [ "Utility" ];
+            })
           ];
 
-          NIX_LDFLAGS = "-rpath ${
-            final.lib.makeLibraryPath [
-              final.gtk4
-              final.cairo
-              final.glib
-              final.pango
-              final.gdk-pixbuf
-              final.graphene
-              final.sqlite
-            ]
-          }";
+          postInstall = ''
+      # Install the icon (Assuming you have an icon file in your source)
+      # Replace 'assets/icon.png' with the actual path to your icon in your repo
+      install -D assets/icon.png $out/share/icons/hicolor/128x128/apps/com.pomotasker.app.png
+      install -D assets/icon.svg $out/share/icons/hicolor/scalable/apps/com.pomotasker.app.svg
+    '';
+
+          # Optional: Only use this if you get "library not found" errors at runtime.
+          # wrapGAppsHook4 usually handles this automatically.
+          # NIX_LDFLAGS = ... (removed for brevity, keep if you specifically need it)
 
           meta = with final.lib; {
             description = "Pomodoro habit tracker with GTK4";
@@ -65,20 +69,20 @@
         };
       };
     in
-    {
-      overlays.default = overlay;
-    } // (flake-utils.lib.eachSystem supportedSystems (system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ self.overlays.default ];
-        };
-      in
       {
-        packages = {
-          default = pkgs.pomotasker;
-          pomotasker = pkgs.pomotasker;
-        };
-      }
-    ));
+        overlays.default = overlay;
+      } // (flake-utils.lib.eachSystem supportedSystems (system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ self.overlays.default ];
+          };
+        in
+          {
+            packages = {
+              default = pkgs.pomotasker;
+              pomotasker = pkgs.pomotasker;
+            };
+          }
+      ));
 }
