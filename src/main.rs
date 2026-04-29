@@ -21,9 +21,14 @@ fn main() {
     }
 
     // Resolve absolute paths so clone() works regardless of CWD
-    let db_path = std::env::current_dir()
-        .expect("No cwd")
-        .join("pomotasker.db");
+    let mut db_dir = std::env::var("HOME")
+        .or_else(|_| std::env::var("XDG_DATA_HOME"))
+        .unwrap_or_else(|_| "/home/andrew/.pomotasker".to_string());
+    if !db_dir.ends_with(".pomotasker") {
+        db_dir = format!("{}/.pomotasker", db_dir);
+    }
+    std::fs::create_dir_all(&db_dir).expect("Failed to create data dir");
+    let db_path = std::path::Path::new(&db_dir).join("pomotasker.db");
 
     app.connect_activate(move |app| {
         // Database (absolute path)
