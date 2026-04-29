@@ -26,9 +26,8 @@ impl Default for Settings {
 
 impl Settings {
     fn settings_path() -> PathBuf {
-        std::env::current_dir()
-            .expect("No cwd")
-            .join("pomotasker_settings.txt")
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/andrew".to_string());
+        PathBuf::from(format!("{}/.pomotasker/pomotasker_settings.txt", home))
     }
 
     pub fn load() -> Self {
